@@ -33,7 +33,7 @@ clean:
 	@@rm -rf $(FIRMWAREDIR)
 
 flash: init $(BIN)
-	st-flash write $(BIN) 0x8000000
+	st-flash --reset write $(BIN) 0x8000000
 
 erase:
 	st-flash erase
