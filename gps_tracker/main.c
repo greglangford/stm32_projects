@@ -2,16 +2,19 @@
 #include <string.h>
 #include "include/stm32f1xx.h"
 
-volatile uint8_t isGpsRx = 0;
 volatile uint8_t isGpsStart = 0;
 volatile uint8_t isGpsReady = 0;
 char buf[100];
-volatile char gpsRxChar;
-char *ptrbuf;
+volatile char *ptrbuf;
 
 void USART1_putchar(char c) {
     while(!(USART1->SR & USART_SR_TXE));
     USART1->DR = c;
+}
+
+char USART2_getchar() {
+    while(!(USART2->SR & USART_SR_RXNE));
+    return USART2->DR;
 }
 
 void debug_message(char *data) {
@@ -44,61 +47,50 @@ int main(void) {
     USART1->CR1 = USART_CR1_UE | USART_CR1_RXNEIE | USART_CR1_TE | USART_CR1_RE;
 
     USART2->BRR = 833;
-    USART2->CR1 = USART_CR1_UE | USART_CR1_RXNEIE | USART_CR1_TE | USART_CR1_RE;    // 9600 baud
+    USART2->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;    // 9600 baud
 
     debug_message("Starting GPS Tracker ...\r\n");
 
     ptrbuf = &buf[0];
     memset(buf, 0, 100);
 
-    NVIC_EnableIRQ(USART2_IRQn);
+    //NVIC_EnableIRQ(USART2_IRQn);
 
     GPIOA->ODR |= GPIO_ODR_ODR1;        // Enable GPS
 
     while(1) {
 
-        // Process GPS RX Char
-        if(isGpsRx == 1) {
-            isGpsRx = 0;
+        // Get GPS String
+        while(!isGpsReady) {
+            char c;
+            c = USART2_getchar();
 
-            if(gpsRxChar == '$') {
+            if(c == '$') {
                 isGpsStart = 1;
             }
 
-            if(isGpsStart == 1) {
-                *ptrbuf++ = gpsRxChar;
-            }
-
-            if((isGpsStart == 1) && (gpsRxChar == '\n')) {
+            if(c == '\n') {
                 isGpsStart = 0;
                 isGpsReady = 1;
             }
+
+            *ptrbuf++ = c;
         }
 
-        // Process GPS Sentence
-        if(isGpsReady == 1) {
-            USART2->CR1 &= ~USART_CR1_RXNEIE;   // Disable interrupt
+        // Process GPS String
+        if(isGpsReady) {
             isGpsReady = 0;
 
-            // Process GPS string here
             char *p;
-            p = strstr(buf, "$GNGGA");
+            p = strstr (buf, "$GNGGA");
 
             if(p) {
                 debug_message(buf);
             }
 
-            ptrbuf = &buf[0];                   // Reset pointer
-            memset(buf, 0, sizeof(buf));        // Clear buffer
-
-            USART2->CR1 |= USART_CR1_RXNEIE;    // Enable interrupt
+            // Reset pointer and buffer
+            ptrbuf = &buf[0];
+            memset(buf, 0, 100);
         }
-    }
-}
-
-void USART2_IRQHandler(void) {
-    if((USART2->SR & USART_SR_RXNE)) {
-        gpsRxChar = USART2->DR;
-        isGpsRx = 1;
     }
 }
