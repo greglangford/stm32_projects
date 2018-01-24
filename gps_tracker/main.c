@@ -1,27 +1,11 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "include/stm32f1xx.h"
+#include "include/uart.h"
+#include "include/gps.h"
 
-volatile uint8_t isGpsStart = 0;
-volatile uint8_t isGpsReady = 0;
-char buf[100];
-volatile char *ptrbuf;
-
-void USART1_putchar(char c) {
-    while(!(USART1->SR & USART_SR_TXE));
-    USART1->DR = c;
-}
-
-char USART2_getchar() {
-    while(!(USART2->SR & USART_SR_RXNE));
-    return USART2->DR;
-}
-
-void debug_message(char *data) {
-    while(*data) {
-        USART1_putchar(*data++);
-    }
-}
+char buf[GPS_STRING_BUFFER_LEN];
 
 int main(void) {
     RCC->CR |= RCC_CR_HSEON;                // HSE enable
@@ -50,47 +34,11 @@ int main(void) {
     USART2->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;    // 9600 baud
 
     debug_message("Starting GPS Tracker ...\r\n");
-
-    ptrbuf = &buf[0];
-    memset(buf, 0, 100);
-
-    //NVIC_EnableIRQ(USART2_IRQn);
-
     GPIOA->ODR |= GPIO_ODR_ODR1;        // Enable GPS
 
     while(1) {
-
-        // Get GPS String
-        while(!isGpsReady) {
-            char c;
-            c = USART2_getchar();
-
-            if(c == '$') {
-                isGpsStart = 1;
-            }
-
-            if(c == '\n') {
-                isGpsStart = 0;
-                isGpsReady = 1;
-            }
-
-            *ptrbuf++ = c;
-        }
-
-        // Process GPS String
-        if(isGpsReady) {
-            isGpsReady = 0;
-
-            char *p;
-            p = strstr (buf, "$GNGGA");
-
-            if(p) {
-                debug_message(buf);
-            }
-
-            // Reset pointer and buffer
-            ptrbuf = &buf[0];
-            memset(buf, 0, 100);
+        if(gps_get_sentence(USART2, "$GNRMC", buf)) {
+            debug_message(buf);
         }
     }
 }
