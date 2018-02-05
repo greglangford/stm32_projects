@@ -5,10 +5,12 @@
 #include "include/main.h"
 
 char buf[100];
+volatile int repeat_count;
+volatile int bit_count;
 volatile int gpio_reg;
 volatile int end_segment;
 volatile int capture_buf_pos;
-int capture_buf[50];
+int capture_buf[10][50];
 volatile int preamble;
 volatile int timer_capture;
 volatile uint8_t timer_capture_flag;
@@ -44,10 +46,12 @@ int main(void) {
 
     USART_putstring("Welcome to Timer 2 Input Capture ...\r\n");
 
+    repeat_count = 0;
     end_segment = 0;
     capture_buf_pos = 0;
     timer_capture = 0;
     timer_capture_flag = 0;
+    bit_count = 0;
 
     TIM2->PSC = 8;
     TIM2->DIER |= TIM_DIER_CC4IE;
@@ -59,11 +63,12 @@ int main(void) {
     NVIC_EnableIRQ(TIM2_IRQn);
 
     while(1) {
-        if(capture_buf_pos >= 10) {
+        if(end_segment > 2) {
+            end_segment = 0;
             capture_buf_pos = 0;
             preamble = 0;
             memset(buf, 0, sizeof(buf));
-            sprintf(buf, "Code: %d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t\r\n", capture_buf[0], capture_buf[1], capture_buf[2], capture_buf[3], capture_buf[4], capture_buf[5], capture_buf[6], capture_buf[7]);
+            sprintf(buf, "Bit Count: %d\tCode: %d\t%d\t%d\t\r\n", bit_count, capture_buf[1][0], capture_buf[1][1], capture_buf[1][2]);
             USART_putstring(buf);
         }
     }
@@ -81,19 +86,24 @@ void TIM2_IRQHandler(void) {
             // Rising Edge
             if(preamble) {
                 if((timer_capture >= 200) && (timer_capture <= 1500)) {
-                    capture_buf[capture_buf_pos] = timer_capture;
+                    capture_buf[end_segment][capture_buf_pos] = timer_capture;
                     capture_buf_pos++;
                 } else {
+                    capture_buf_pos = 0;
                     preamble = 0;
-                }
-            } else {
-                if((timer_capture >= 5000) && (timer_capture <= 10000)) {
-                    preamble = 1;
                 }
             }
 
+            // Find premable
+            if((timer_capture >= 5000) && (timer_capture <= 10000)) {
+                if(!preamble) {
+                    preamble = 1;
+                }
 
-
+                if(preamble) {
+                    end_segment++;
+                }
+            }
             TIM2->CCER |= TIM_CCER_CC4P;
         } else {
             // Falling Edge
